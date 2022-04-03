@@ -70,71 +70,53 @@
             <p>Spheres Example</p>
         </div>
 
-        <p>For part 3-2, we were tasked with implemented microfacet material which allows us to render
+        <h3 style="text-align: center;">Implementing Microfacet Material</h3>
+
+        <p>For part 3-2, we were tasked with implementing microfacet material which allows us to render
             metallic materials. The microfacet material has many small reflections resulting from its
             composition of tiny micro-like mirrors on its surface. The reflections bouncing off of
             these mirrors create the specularity of the material. To implement the microfacet material,
-            our process begins by implementing the Microfacet Bidirectional Reflectance Distribution Function (BRDF).</p>
+            our process begins by implementing the Microfacet Bidirectional Reflectance Distribution Function (BRDF), which will help us define how light will be reflected as detailed by the microfacet theory.</p>
+
         <p>
-            To find the BRDF, we first calculate the NDF (normal distribution function) * shadow-masking term * F (fresnel term) divide by the surface normal's dot products with the incoming and outgoing rays as represented in the function below:
+            This process relied mainly on 4 tasks: calculating the BRDF, implementing the Normal Distribution Function (NDF), finding the Fresel Term (F), and implementing importance sampling.
+           </p>
+
+            <p> <bold style="font-weight: bold; text-decoration: underline;">BRDF evaluation – Implementing MicrofacetBSDF:f()</bold>
+                <br>
+            In <code>MicrofacetBSDF::f()</code>, we first check if our <code>w_i</code> and <code>w_o</code> are valid by checking that both <code>dot(n, w_i)</code> and <code>dot(n, w_o)</code> are greater than 0. Our <code>n = (0, 0, 1)</code> represents the macro surface normal in local coordinates, and <code>h</code>, which we use later in our calculations, is the half-vector bisecting the incident light ray and the outgoing light ray. To find the BRDF, we first calculate the NDF * shadowing-masking term * F, dividing the total by a scalar and the surface normal's dot products with the incoming and outgoing rays as represented in the function given below. The shadow-masking term calculation is already given to us and fairly trivial, so in the next parts we implement the NDF and F calculations.
         </p>
 
         <img src="images/part2/task2_f.png" align="middle" style="margin-left:auto; margin-right:auto; display:block; width: 400px;" alt="f" />
 
-        <p>The NDF represents the distribution of the normals of the microfacet. When a normal lies on the halfvector of the incoming w_i and outgoing w_o vectors, there is a reflectance from the incoming vector to the outgoing vector. Then, we use the Beckmann distribution to calculate our normal distribution. As we'll mention below, the value of alpha used changes the roughness of the material. The NDF is represented through:</p>
+        <p><bold style="font-weight: bold; text-decoration: underline;">NDF evaluation – Implementing MicrofacetBSDF:D()</bold>
+            <br>The NDF represents the distribution of the normals of the microfacet. When a normal lies on the half-vector <code>h</code> of the incoming w_i and outgoing w_o vectors, there is a reflectance from the incoming vector to the outgoing vector. It describes the shape of the surface as a distribution of microfacet orientation, essentially serving as a way to weigh the brightness of the reflections within the BRDF function. The model we use for NDF is the Beckmann distribution to calculate our normal distribution. As we'll mention below, the value of alpha used changes the roughness of the material. Remembering that alpha represents roughness of the material and θ is the angle between the aforementioned half vector and the macro surface normal n, The NDF is therefore represented through:</p>
         <img src="images/part2/task2_d.png" align="middle" style="margin-left:auto; margin-right:auto; display:block; width: 400px;" alt="f" />
+        <p> <bold style="font-weight: bold; text-decoration: underline;">MicrofacetBSDF:G()</bold>
+            <br>The shadowing-masking term quantifies the probability of a microfacet being visible in the ingoing (shadowing) and outgoing (masking) directions. The calculations were given with the equation below and changes with the <code>alpha</code> value:
+            <pre style="text-align: center;">Shadow-masking term = 1.0 / (1.0 + Lambda(wi) + Lambda(wo));</pre>
 
-        <p>The Fresnel term is calculated in the fomular below using RGB wavelengths to represent eta and k:</p>
+           </p>
+            <p>
+            <bold style="font-weight: bold; text-decoration: underline;">F evaluation – Implementing MicrofacetBSDF:F()</bold>
+            <br>The Fresnel term, which models the amount of light that will be included in the specular reflection (compared to the diffuse reflection), is calculated in the formula below using RGB wavelengths to represent eta and k at the respective metal material. The main role of the Fresnel term is thus to represent the color output. The wavelengths tells us how the light waves propogate. Note that the below is for the air-conductor term, with the "assumption" that each channel has a fixed wavelength:</p>
         <img src="images/part2/task2_fresnel.png" align="middle" style="margin-left:auto; margin-right:auto; display:block; width: 400px;" alt="f" />
 
-        <p>Finally, we replace cosine hemisphere sampling with  importance sampling. We start by using Beckmann's equation to create the pdf of the incident light ray w_i. We first calculate θh and ϕh using the random sampled values given.</p>
+        <p>  <bold style="font-weight: bold; text-decoration: underline;">Importance Sampling evaluation – Implementing MicrofacetBSDF::sample_f()</bold>
+            <br>Finally, we replace cosine hemisphere sampling with  importance sampling, as cosine hemisphere sampling is only good in the case of diffuse BRDFs and not as suitable for Beckmann distrubtion. We need to change that, so it corresponds with the shape of the NDF, since that is crucial towards the geometry of the reflection. We start by using Beckmann's equation to create the pdf of the incident light ray w_i. We first calculate θh and ϕh using the random sampled values given, random values between [0, 1), to get the microfacet normal h.</p>
         <img src="images/part2/task2_itheta.png" align="middle" style="margin-left:auto; margin-right:auto; display:block; width: 400px;" alt="f" />
-        <p>We then find the pdfs of θh and ϕh to find the half-vector h using spherical coordinates to find the x, y, and z coordinates of h. Once h is calculated, we calculate the pdfs of the h vector and incident ray.</p>
+        <p>Using theta and phi, we convert the spherical coordinates to find the x, y, and z coordinates of h. Reflecting over w_o according to h, we sample w_i, our incoming light ray.</p>
+        <pre>Vector3D h = Vector3D( sin(theta_h)*cos(phi_h), sin(theta_h)*sin(phi_h), cos(theta_h))</pre>
+        <p>With our sampled microfacet h, we can calculate w_i by reflecting w_o according to h with:</p>
+        <pre>w_i = (2*dot(wo, h)*h)-w_o</pre>
+        <p>Now that we have our incoming light ray, we just need to calculate the pdf of w_i with respect to the solid angle. We start by using the inversion method to find the pdfs of θh and ϕh. Ideally, our pdfs will resemble the NDF, meaning that there will be a higher convergence in our output. </p>
         <img src="images/part2/task2_ipdftheta.png" align="middle" style="margin-left:auto; margin-right:auto; display:block; width: 400px;" alt="f" />
-        <img src="images/part2/task2_pdfwh.png" align="middle" style="margin-left:auto; margin-right:auto; display:block; width: 400px;" alt="f" />
+        <p>Using this, we can calculate the pdf of h with respect to the solid angle.</p>
+            <img src="images/part2/task2_pdfwh.png" align="middle" style="margin-left:auto; margin-right:auto; display:block; width: 400px;" alt="f" />
+        <p>With all these steps, we can now calculate the pdf of w_i with respect to the solid angle which we can now use in our BRDF calculations: </p>
         <img src="images/part2/task2_pdfwi.png" align="middle" style="margin-left:auto; margin-right:auto; display:block; width: 400px;" alt="f" />
 
-
-        <h3 style="text-align: center;">Changing the Microfacet BRDF with α</h3>
-
-            <p>One feature of microfacet material is the alpha α value. Alpha represents the roughness of the macro surface, generally ranging between 0.005 and 0.5. A large α tends to appear more diffused while glossier when α is smaller.</p>
-            <p>When the α is smaller, the specularity of the surface is high. Due to the specularity, some white spots can be seen in the scene. These white spots are rendering artifacts often labeled as "fireflies" that result from tiny pdf values being bumped into the ray path and causing the radiance to spike in one-directional path tracing. However, these issues often go away with higher sampling counts.
-            You can see an example of this below. For the low alpha of 0.005, fireflies can be seen, but as the alpha becomes larger, the image becomes more diffused to where no fireflies can be seen.
-            </p>
-
-            <p>
-                When <code>α = 0.005</code>, the image appears very noisy all around the box. The dragon is also quite shiny and has stark reflections, almost like a mirror would. The Cornell Box can also be seen reflected on the dragon itself with tints of red and blue being seen reflected (global illumination).
-            </p>
-
-            <p>As we increase <code>α</code> to be <code>α = 0.05</code>, we have a very similar image to <code>α = 0.005</code>, but the white spots are harder to see and the image is less noisy. We can also still see blotches of black, meaning there is no light coming from the direction being reflected.</p>
-            <p>Increase <code>α</code> to <code>α = 0.25</code>, the dragon begins to look starkly different. While the image still has some reflection being shown, the material is much more dull.</p>
-            <p>Finally, <code>α = 0.50</code>, the dragon looks very matted and diffused. There is a light shine on the dragon from the light, but it is much more spread out compared to the spiked radiance reflections in <code>α = 0.005</code>. This output is the least noisy.</p>
-
-        <p>To render the <code>CBdragon_microfacet_au.dae</code>, we rendered with 128 samples per pixel, 1 sample per light, and a max depth of 5 bounces. </p>
-            <table style="width:100%">
-                <tr>
-                    <td>
-                        <img src="images/part2/dragon005.png" align="middle" width="400px" />
-                        <p align="middle">α = 0.005</p>
-                    </td>
-                    <td>
-                        <img src="images/part2/dragon05.png" align="middle" width="400px" />
-                        <p align="middle">α = 0.05</p>
-                    </td>
-                </tr>
-                <tr>
-                    <td>
-                        <img src="images/part2/dragon25.png" align="middle" width="400px" />
-                        <p align="middle">α = 0.25</p>
-                    </td>
-                    <td>
-                        <img src="images/part2/dragon5.png" align="middle" width="400px" />
-                        <p align="middle">α = 0.50</p>
-                    </td>
-                </tr>
-            </table>
-
-        <h3 style="text-align: center;">Uniform Sampling vs Importance Sampling</h3>
+        <h3 style="text-align: center;">Differences between Uniform Sampling and Importance Sampling</h3>
         <p>Below is a comparisons between uniform cosine hemisphere sampling and importance sampling at a rate of 64 samples per pixel and 1 samples per light as well as a max depth of 5 bounces.  </p>
         <p>In the left image, the uniform cosine hemisphere sampling is extremely noisy. Alternatively, on the right image, the importance sampling still contains a bit of noise, but the material is much more noticeable and easy to view. Uniform cosine hemisphere sampling converges much slower than importance sampling. Despite having the same amount of samples, importance sampling performs much better for microfacet materials. </p>
         <!--        <div align="middle">-->
@@ -150,6 +132,46 @@
                 </td>
             </tr>
         </table>
+
+        <h3 style="text-align: center;">Changing the Microfacet BRDF with α</h3>
+
+        <p>One feature of microfacet material is the alpha α value. Alpha represents the roughness of the macro surface, generally ranging between 0.005 and 0.5. A large α tends to appear more diffused while glossier when α is smaller.</p>
+        <p>When the α is smaller, the specularity of the surface is high. Due to the specularity, some white spots can be seen in the scene. These white spots are rendering artifacts often labeled as "fireflies" that result from tiny pdf values being bumped into the ray path and causing the radiance to spike in one-directional path tracing. However, these issues often go away with higher sampling counts.
+            You can see an example of this below. For the low alpha of 0.005, fireflies can be seen, but as the alpha becomes larger, the image becomes more diffused to where no fireflies can be seen.
+        </p>
+
+        <p>
+            When <code>α = 0.005</code>, the image appears very noisy all around the box. The dragon is also quite shiny and has stark reflections, almost like a mirror would. The Cornell Box can also be seen reflected on the dragon itself with tints of red and blue being seen reflected (global illumination).
+        </p>
+
+        <p>As we increase <code>α</code> to be <code>α = 0.05</code>, we have a very similar image to <code>α = 0.005</code>, but the white spots are harder to see and the image is less noisy. We can also still see blotches of black, meaning there is no light coming from the direction being reflected.</p>
+        <p>Increase <code>α</code> to <code>α = 0.25</code>, the dragon begins to look starkly different. While the image still has some reflection being shown, the material is much more dull.</p>
+        <p>Finally, <code>α = 0.50</code>, the dragon looks very matted and diffused. There is a light shine on the dragon from the light, but it is much more spread out compared to the spiked radiance reflections in <code>α = 0.005</code>. This output is the least noisy.</p>
+
+        <p>To render the <code>CBdragon_microfacet_au.dae</code>, we rendered with 128 samples per pixel, 1 sample per light, and a max depth of 5 bounces. </p>
+        <table style="width:100%">
+            <tr>
+                <td>
+                    <img src="images/part2/dragon005.png" align="middle" width="400px" />
+                    <p align="middle">α = 0.005</p>
+                </td>
+                <td>
+                    <img src="images/part2/dragon05.png" align="middle" width="400px" />
+                    <p align="middle">α = 0.05</p>
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <img src="images/part2/dragon25.png" align="middle" width="400px" />
+                    <p align="middle">α = 0.25</p>
+                </td>
+                <td>
+                    <img src="images/part2/dragon5.png" align="middle" width="400px" />
+                    <p align="middle">α = 0.50</p>
+                </td>
+            </tr>
+        </table>
+
 
 
         <h3 style="text-align: center;">Implementing Palladium material</h3>
@@ -216,27 +238,33 @@
         </p>
 
         <h2>Rendering the Light</h2>
-        <p>We started out by implementing a function that would sample a given direction (defined in a ray parameter) in the environment map to determine the color to output. In our implementation of <code>sample_dir</code> we get the direction from the ray parameter. Since we need to sample on that direction, and our texture map is parametrized on phi and theta values, we then call the helper <code>dir_to_theta_phi</code> on the direction. However, we need to convert to the xy coordinate plane so we run the vector with theta and phi through <code>theta_phi_to_xy</code> and billinearly interpolate to get the color from the envmap data</p>
-        <p>Next we implemented uniform sampling as a way to ease into the light rendering model. We sample uniformly over a sphere to generate a random direction. We then convert this direction to coordinates with the <code>dir_to_theta_phi</code> method since, again, our texture map is parametrized on theta and phi. We then access the environment map's relevant radiance value by using the bilinear interpolation method helper provided </p>
-        <p>The next part was the most challenging. We need a way to reduce the noise that results from uniform sampling. In the real world, the impact of the environment lighting is most apparent from the directions of the brightest light sources. So, we implemented importance sampling to gather more samples in those directions. the impact of the environment lighting is most apparent from the directions of the brightest light sources by using probability. If the flux from the corresponding solid angle is larger, then it should be weighted higher and that value is represented through probability. We can then depend on the properties of probability distributions to determine how to sample in each case.</p>
-        <p> The first part of importance sampling is to compute the PDF, or the probability density function. We create a pdf array map based on the following formula using a double for loop over the width and height and row-major 2D indexing. After computing each position in the array, we normalize the array by dividing by the cumulative sum, so that it sums to 1 (as probability distributions should):</p>
+        <p>We started out by implementing a function that would sample a given direction (defined in a ray parameter) in the environment map to determine the color to output. In our implementation of <code>sample_dir</code> we get the direction from the ray parameter. Since we need to sample on that direction, and our texture map is parametrized on phi and theta values, we then call the helper <code>dir_to_theta_phi</code> on the direction. However, we need to convert to the xy coordinate plane so we run the vector with theta and phi through <code>theta_phi_to_xy</code> and billinearly interpolate to get the color from the environment map data</p>
+        <p>Next we implemented uniform sampling as a way to ease into the light rendering model. We sample uniformly over a sphere to generate a random direction. We then convert this direction to coordinates with the <code>dir_to_theta_phi</code> method since, again, our texture map is parametrized on theta and phi. We then access the environment map's relevant radiance value by using the bilinear interpolation method helper provided. We have to keep in mind that this is uniformly sampling over the solid angle (so we set the pdf to 1/4π and that we want to sample the light sources as if they are infinitely far away, so the distance to the light must be set to INF_D</p>
+        <p>The next part was the most challenging. We need a way to reduce the noise that results from uniform sampling. In the real world, the impact of the environment lighting is most apparent from the directions of the brightest light sources. So, we implemented importance sampling to gather more samples in those directions. The impact of the environment lighting is set from the directions of the brightest light sources by using probability. If the flux from the corresponding solid angle is larger, then it should be weighted higher and that weighted value is represented through probability distributions. We can then depend on the properties of probability distributions to determine how to sample in each case.</p>
+    <p> The first part of importance sampling is to compute the PDF, or the probability density function. We create a pdf array map based on the following formula using a double for loop over the width and height and row-major 2D indexing. Note that E in the formula is illuminance sampled from our <code>envmap</code>. After computing each position in the array, we normalize the array by dividing by the cumulative sum, so that it sums to 1 (as probability distributions should). This density tells us how to weigh sampling throughout the environment data:</p>
         <img src="images/formula.jpg" align="middle" width="400px" />
 
-        <p>After that comes the computation of the marginal distribution, which we will be sampling on. For this we use the following formula: </p>
+        <p>After that comes the computation of the marginal distribution, which is what we will be sampling on for y. For this we use the following formula: </p>
         <img src="images/formula2.jpg" align="middle" width="400px" />
-        <p>    What's interesting about this part is that each subsequent index in the <code>marginal_y</code> vector depends on the previous. As we loop over i and j, we therefore read in marginal_y[j-1] and add it in before we begin to make the final computations for marginal_y[j]. After we've added the previous, we loop over that row (the width) and add in the relevant values of our row major implementation of the pdf. </p>
+        <p>What's interesting about this part is that each subsequent index in the <code>marginal_y</code> vector depends on the previous. As we loop over i and j, we therefore read in <code>marginal_y[j-1]</code> and add it in before we begin to make the final computations for <code>marginal_y[j]</code>. After we've added the previous, we loop over that row (the width) and add in the relevant values of our row major implementation of the pdf. </p>
 
         <p>The third step is to compute the conditional distributions by using Bayes rule and remembering that p(x|y) = p(x,y)/p(y). We want the cumulative distribution though so we integrate over that, as per the formula below. Integrations can be represented as discrete summation approximations. Since we're doing the distributions over i given j, we sum over i values. p(j) is the marginal density, which is the integration of the pdf over the width. Both formulas are below</p>
         <img src="images/formula3.jpg" align="middle" width="400px" />
         <img src="images/formula%205.jpg" align="middle" width="400px" />
-        <p>One thing to note is that conds_y, in which we put our conditional distribution values, is that since it's a conditional, we need to index into the array with both i and j. This means its a row-major implementation. We set up once again a double for loop over the width and height. We make use of the marginal distribution because, due to Bayes rule,     }we need it for the cumulative conditional distribution. Marginal distribution is not the same as marginal density. We need the latter. So, we read in the the density by substracting marginal_y[j] - marginal_y[j - 1] in our j loop. We then iterate within the j loop over the i loop     and add into the conds_y array the calculation of the cumulative conditional using the given formulas.</p>
-        <p>
-            The last part is putting it all together. We update our sampling so we're not just uniform sampling but also putting a weight on brighter sources using the probability values we just calculated. We generate a sample over the sphere. Then we use the inversion method to generate random variables x and y.These both happen separately. To get y, we use the intuition behind the inversion method to find the first element in the marginal_y array that is greater than the y value from the sample we just generated. To get x, we use y to find the respective part of conds_y (which starts at <code>conds_y + y * envMap->w</code>) and find the first element in it that is greater than the x value of the uniform sampleVector2D xySample = sampler_uniform2d.get_sample(); After we find these x,y coordinates we convert them into a direction and store in *wi. we change the pointer of distance to light to be INF_D and calculate the pdf by quering the pdf_envmap using row major array indexing, and then we multiply by  \frac{wh}{2\pi^{2}sin \theta } to switch between probability densities. We finally return the data value of the x,y coordinate from envMap->data </p>
+        <p>One thing to note is that conds_y, in which we put our conditional distribution values, is that since it's a conditional, we need to index into the array with both i and j. This means its a row-major implementation. We set up once again a double for loop over the width and height. We make use of the marginal distribution because, due to Bayes rule, we need it for the cumulative conditional distribution. Marginal distribution is not the same as marginal density. We need the latter. So, we read in the the density by substracting <code>marginal_y[j] - marginal_y[j - 1]</code> in our j loop. We then iterate within the j loop over the i loop and add into the conds_y array the calculation of the cumulative conditional using the given formulas.</p>
+        <p>With the probability distributions calculated, we wanted to confirm we were generating the right probability values and densities, so we used to sanity check functionality provided and outputted the image probability_debug.png to compare it with the expected image shown in the spec. Ours looked the same after some debugging, as shown below:</p>
+        <img src="images/probability_debug.png" align="middle" width="400px" />
+
+    <p>
+            The last part is putting it all together. We update our sampling so we're not just uniform sampling but also putting a weight on brighter sources using the probability values we just calculated. We generate a sample over the sphere. Then we use the inversion method to generate random variables x and y. These both happen separately. First, let's recap the inversion method for the discrete case (since we are using approximations). To generate the value of X, generate a random variable U where U is uniformly distributed in (0,1) and set: </p>
+           <img src="images/discrete inversion.png" align="middle" width="400px" />
+
+    </p>We sample over <code>marginal_y</code> to get y, and <code>marginal_y</code> already has the b summations. So, to get y, we use the intuition behind the inversion method to find the first element in the <code>marginal_y</code> array that is greater than the y value from the sample we just generated. To get x, we use y to find the respective part of conds_y from memory (which starts at <code>conds_y + y * envMap->w</code>) and find the first element in it that is greater than the x value of the sample we found. After we find these x,y coordinates we convert them into a light direction and store in *wi. we change the pointer of distance to light to be INF_D and calculate the pdf by querying the pdf_envmap, and then we multiply by a factor that allows us to switch between probability densities. We finally return the data value of the new random variable (x,y) coordinate from <code>envMap->data </code></p>
         <h2>Bugs</h2>
         <p>
             During this process, we struggled with various bugs in our initial implementation.
             <ul>
-                <li>The summations were a bit difficult to structure, and the probability formulas were somewhat overwhelming. Originally, our loops were incorrect. In one nested for loop, I had one loop too many, so that it never stopped rendering (at least I think it didn't, I'd usually quit after waiting ~25 minutes for the environment lighting to render). I figured out that it was an issue with importance sampling because when I reverted to uniform sampling it worked. Then, I knew it was an issue with some kind of loop because when I ran the render, I observed the command land output and it was stuck on environment lighting. In addition, at this point, the save_probability_debug file was completely black. I solved it by rewriting the for loops and simplifying the logic by using 2 loops instead of 3 nested loops and checking my stop conditions. </li>
+                <li>The summations were a bit difficult to structure, and the probability formulas were somewhat overwhelming. Originally, our loops were incorrect. In one nested for loop, I had one loop too many, so that it never stopped rendering (at least I think it didn't, I'd usually quit after waiting ~25 minutes for the environment lighting to render). I figured out that it was an issue with importance sampling because when I reverted to uniform sampling it worked. Then, I knew it was an issue with some kind of loop because when I ran the render, I observed the command line output and it was stuck on environment lighting. In addition, at this point, the save_probability_debug file was completely black. I solved it by rewriting the for loops and simplifying the logic by using 2 loops instead of 3 nested loops and checking my stop conditions. </li>
                 <li> Similarly to above, we realized that we had calculated the marginal_y vector values incorrectly because we weren't accounting for the impact of marginal_y[j-1] and it looked really noisy </li>
                 <li>In addition, we overcomplicated our usage of the inversion method. We created a bunch of nested for loops to find and sum the values that were passed into upper_bound, when we only needed the ones we'd already calculated. We also didn't initially realize we needed to substract the given upperbounds with the respective part of memory (marginal_y for getting y and conds_y + w *i for getting x). I figured out that the way we set up the sampling at the end was incorrect because probability_debug.png was displaying the correct color values.  </li>
             </ul>
